@@ -88,7 +88,7 @@ RUN set -eux; \
     mkdir -p /root/.pi; \
     du -sh /opt/pi-seed || true
 
-# 用户与目录（uid/gid 与宿主一致，方便挂载）
+# 目录 + 备用普通用户（默认仍以 root 运行，dev 只是需要时切过去用）
 RUN set -eux; \
     if ! getent group "${DEV_GID}" >/dev/null; then groupadd -g "${DEV_GID}" dev; fi; \
     if ! getent passwd "${DEV_UID}" >/dev/null; then \
@@ -98,7 +98,8 @@ RUN set -eux; \
     echo "${dev_user} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/90-dev; \
     chmod 0440 /etc/sudoers.d/90-dev; \
     mkdir -p /workspace /run/sshd /etc/ssh/keys /root/.pi/agent /var/log/pi-remote-feishu; \
-    chown -R "${DEV_UID}:${DEV_GID}" /workspace; \
+    chown "root:$(getent group "${DEV_GID}" | cut -d: -f1)" /workspace; \
+    chmod 775 /workspace; \
     chmod 700 /root
 
 # sshd：容器内允许 root 密码登录，宿主密钥目录可挂载持久化
@@ -110,8 +111,9 @@ RUN set -eux; \
     rm -f /etc/ssh/ssh_host_*
 
 COPY feishu-config.py /usr/local/bin/feishu-config.py
+COPY relay-sync.py /usr/local/bin/relay-sync.py
 COPY entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod 0755 /usr/local/bin/feishu-config.py /usr/local/bin/docker-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/feishu-config.py /usr/local/bin/relay-sync.py /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /workspace
 

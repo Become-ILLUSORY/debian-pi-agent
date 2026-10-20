@@ -38,7 +38,7 @@ fi
 
 if [ -n "$DEV_PASSWORD" ]; then
     echo "${DEV_USER}:${DEV_PASSWORD}" | chpasswd
-    log "${DEV_USER} 密码已设置"
+    log "${DEV_USER} 密码已设置（默认仍以 root 运行，按需 docker exec -it -u ${DEV_USER} 切过去）"
 fi
 
 # 支持 SSH_AUTHORIZED_KEYS 环境变量（多行）或 /etc/ssh/authorized_keys 挂载文件
@@ -70,7 +70,50 @@ if [ ! -f /root/.pi/agent/settings.json ] && [ -d /opt/pi-seed ]; then
     cp -a /opt/pi-seed/. /root/.pi/
 fi
 
+case "$PI_WORKDIR" in
+    /|/root|/home|/etc|/usr|/var|/bin|/sbin|/lib|/boot|/dev|/proc|/sys)
+        log "警告：PI_WORKDIR=${PI_WORKDIR} 是系统/凭据目录，agent 会读写敏感文件；建议保持默认 /workspace"
+        ;;
+esac
 mkdir -p "$PI_WORKDIR"
+
+# ---------- 中转站模型 ----------
+if [ -n "${PI_RELAY_BASE_URL:-}" ]; then
+    if python3 /usr/local/bin/relay-sync.py; then
+        :
+    else
+        log "中转站模型同步失败（不影响启动），可 docker exec -it <容器> python3 /usr/local/bin/relay-sync.py 手动重试"
+    fi
+fi
+
+# ---------- Pi 模型凭据体检 ----------
+has_model_creds() {
+    for var in ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY DEEPSEEK_API_KEY \
+        OPENROUTER_API_KEY XAI_API_KEY GROQ_API_KEY MISTRAL_API_KEY ZAI_API_KEY \
+        MOONSHOT_API_KEY KIMI_API_KEY MINIMAX_API_KEY CEREBRAS_API_KEY; do
+        if [ -n "${!var:-}" ]; then
+            log "检测到模型凭据：${var}"
+            return 0
+        fi
+    done
+    if [ -n "${PI_RELAY_BASE_URL:-}" ] && [ -n "${PI_RELAY_API_KEY:-}" ]; then
+        log "使用中转站模型：${PI_RELAY_BASE_URL}（provider=${PI_RELAY_NAME:-relay}）"
+        return 0
+    fi
+    if [ -s /root/.pi/agent/auth.json ]; then
+        log "检测到已登录的模型账号：/root/.pi/agent/auth.json"
+        return 0
+    fi
+    if grep -q '"defaultModel"' /root/.pi/agent/settings.json 2>/dev/null; then
+        log "检测到默认模型：$(grep -o '"defaultModel"[^,}]*' /root/.pi/agent/settings.json | head -1)"
+        return 0
+    fi
+    log "警告：还没有模型凭据。飞书/终端里发消息会失败，二选一："
+    log "  a) 在 .env 里填 ANTHROPIC_API_KEY / OPENAI_API_KEY / ... 后重启容器"
+    log "  b) docker exec -it <容器> pi → /login 登录订阅账号，Ctrl+S 存默认模型"
+    return 1
+}
+has_model_creds || true
 
 # ---------- pi-remote-feishu ----------
 have_feishu_creds() {
@@ -123,7 +166,7 @@ if should_start_feishu; then
             attempt=0
             while :; do
                 started=$(date +%s)
-                pi-remote-feishu "${argv[@]}" >>"$logfile" 2>&1
+                pi-remote-feishu "${argv[@]}" 2>&1
                 code=$?
                 ran=$(( $(date +%s) - started ))
                 [ "$ran" -ge 120 ] && attempt=0
@@ -137,18 +180,28 @@ if should_start_feishu; then
                 log "pi-remote-feishu 退出（code=${code}，运行 ${ran}s），${delay}s 后重启"
                 sleep "$delay"
             done
-        ) >>"$logfile" 2>&1 &
+        ) 2>&1 | tee -a "$logfile" &
         sleep 6
         if pgrep -f "pi-remote-feishu serve" >/dev/null 2>&1; then
-            log "pi-remote-feishu 已启动（日志 ${logfile}）"
-            log "在飞书里给机器人发消息即可；排障：docker exec -it <容器> pi-remote-feishu doctor --cwd ${PI_WORKDIR}"
+            log "pi-remote-feishu 已启动（日志同时输出到 docker logs 与容器内 ${logfile}）"
         else
-            log "pi-remote-feishu 未能保持运行，最近日志："
-            tail -n 30 "$logfile" 2>/dev/null || true
+            log "pi-remote-feishu 未能保持运行，见上方日志"
         fi
     fi
 else
-    log "飞书桥接未启用（设置 FEISHU_APP_ID / FEISHU_APP_SECRET 后重启容器即可）"
+    log "飞书桥接未启用：在 .env 填 FEISHU_APP_ID / FEISHU_APP_SECRET（并用 FEISHU_ENABLED=auto 或 1）后 docker compose up -d 重建容器"
 fi
+
+# ---------- 启动摘要 ----------
+log "-------------------------------------------"
+log "SSH:  ssh root@<宿主> -p ${SSH_PORT_HINT:-2222}   工作目录: ${PI_WORKDIR}"
+log "Pi:   docker exec -it <容器> pi              （TUI，选模型/开会话）"
+if pgrep -f "pi-remote-feishu serve" >/dev/null 2>&1; then
+    log "飞书: 已连接中，直接在飞书里发消息"
+    log "排障: docker exec -it <容器> pi-remote-feishu doctor --cwd ${PI_WORKDIR}"
+else
+    log "飞书: 未运行"
+fi
+log "-------------------------------------------"
 
 exec "$@"

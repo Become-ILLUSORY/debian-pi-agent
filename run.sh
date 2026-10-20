@@ -13,6 +13,9 @@ DATA_DIR="${DATA_DIR:-./data}"
 
 mkdir -p "$DATA_DIR"/workspace "$DATA_DIR"/ssh "$DATA_DIR"/pi "$DATA_DIR"/gh
 
+ENV_ARGS=()
+[ -f .env ] && ENV_ARGS=(--env-file .env)
+
 docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 
 docker run -d \
@@ -21,31 +24,7 @@ docker run -d \
     --restart unless-stopped \
     -t \
     -p "${SSH_PORT:-2222}:22" \
-    -e "SSH_PASSWORD=${SSH_PASSWORD:-}" \
-    -e "DEV_PASSWORD=${DEV_PASSWORD:-}" \
-    -e "SSH_AUTHORIZED_KEYS=${SSH_AUTHORIZED_KEYS:-}" \
-    -e "PI_WORKDIR=${PI_WORKDIR:-/workspace}" \
-    -e "FEISHU_ENABLED=${FEISHU_ENABLED:-auto}" \
-    -e "FEISHU_APP_ID=${FEISHU_APP_ID:-}" \
-    -e "FEISHU_APP_SECRET=${FEISHU_APP_SECRET:-}" \
-    -e "FEISHU_BOT_NAME=${FEISHU_BOT_NAME:-Pi Agent}" \
-    -e "FEISHU_CONFIG=${FEISHU_CONFIG:-}" \
-    -e "FEISHU_GROUP_SCOPE=${FEISHU_GROUP_SCOPE:-shared-chat}" \
-    -e "FEISHU_REQUIRE_MENTION=${FEISHU_REQUIRE_MENTION:-1}" \
-    -e "FEISHU_DM_ENABLED=${FEISHU_DM_ENABLED:-1}" \
-    -e "FEISHU_GROUP_ENABLED=${FEISHU_GROUP_ENABLED:-1}" \
-    -e "FEISHU_ALLOW_USERS=${FEISHU_ALLOW_USERS:-}" \
-    -e "FEISHU_ALLOW_CHATS=${FEISHU_ALLOW_CHATS:-}" \
-    -e "FEISHU_RENDERING_MODE=${FEISHU_RENDERING_MODE:-stream-card}" \
-    -e "FEISHU_LOG_LEVEL=${FEISHU_LOG_LEVEL:-info}" \
-    -e "FEISHU_DEBUG_EVENTS=${FEISHU_DEBUG_EVENTS:-0}" \
-    -e "FEISHU_MAX_UPLOAD_MB=${FEISHU_MAX_UPLOAD_MB:-20}" \
-    -e "TZ=${TZ:-Asia/Shanghai}" \
-    -e "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}" \
-    -e "OPENAI_API_KEY=${OPENAI_API_KEY:-}" \
-    -e "GEMINI_API_KEY=${GEMINI_API_KEY:-}" \
-    -e "DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}" \
-    -e "OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}" \
+    ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} \
     -v "$(pwd)/${DATA_DIR#./}/workspace:/workspace" \
     -v "$(pwd)/${DATA_DIR#./}/ssh:/etc/ssh/keys" \
     -v "$(pwd)/${DATA_DIR#./}/pi:/root/.pi" \
