@@ -178,33 +178,33 @@ if should_start_feishu; then
         if [ -n "$skip_feishu" ]; then
             log "飞书桥接未启动（凭证无效）；自检：docker exec -it <容器> feishu-check"
         else
-        log "启动 pi-remote-feishu（workspace=${PI_WORKDIR}, group-scope=${FEISHU_GROUP_SCOPE}）"
-        (
-            set +e
-            attempt=0
-            while :; do
-                started=$(date +%s)
-                pi-remote-feishu "${argv[@]}" 2>&1
-                code=$?
-                ran=$(( $(date +%s) - started ))
-                [ "$ran" -ge 120 ] && attempt=0
-                attempt=$((attempt + 1))
-                if [ "$attempt" -ge "$FEISHU_RESTART_LIMIT" ]; then
-                    log "pi-remote-feishu 连续异常退出 ${attempt} 次（最后退出码 ${code}），停止重启；请检查配置后重启容器"
-                    exit 0
-                fi
-                delay=$((attempt * 15))
-                [ "$delay" -gt 300 ] && delay=300
-                log "pi-remote-feishu 退出（code=${code}，运行 ${ran}s），${delay}s 后重启"
-                sleep "$delay"
-            done
-        ) 2>&1 | tee -a "$logfile" &
-        sleep 6
-        if pgrep -f "pi-remote-feishu serve" >/dev/null 2>&1; then
-            log "pi-remote-feishu 已启动（日志同时输出到 docker logs 与容器内 ${logfile}）"
-        else
-            log "pi-remote-feishu 未能保持运行，见上方日志"
-        fi
+            log "启动 pi-remote-feishu（workspace=${PI_WORKDIR}, group-scope=${FEISHU_GROUP_SCOPE}）"
+            (
+                set +e
+                attempt=0
+                while :; do
+                    started=$(date +%s)
+                    pi-remote-feishu "${argv[@]}" 2>&1
+                    code=$?
+                    ran=$(( $(date +%s) - started ))
+                    [ "$ran" -ge 120 ] && attempt=0
+                    attempt=$((attempt + 1))
+                    if [ "$attempt" -ge "$FEISHU_RESTART_LIMIT" ]; then
+                        log "pi-remote-feishu 连续异常退出 ${attempt} 次（最后退出码 ${code}），停止重启；请检查配置后重启容器"
+                        exit 0
+                    fi
+                    delay=$((attempt * 15))
+                    [ "$delay" -gt 300 ] && delay=300
+                    log "pi-remote-feishu 退出（code=${code}，运行 ${ran}s），${delay}s 后重启"
+                    sleep "$delay"
+                done
+            ) 2>&1 | tee -a "$logfile" &
+            sleep 6
+            if pgrep -f "pi-remote-feishu serve" >/dev/null 2>&1; then
+                log "pi-remote-feishu 已启动（日志同时输出到 docker logs 与容器内 ${logfile}）"
+            else
+                log "pi-remote-feishu 未能保持运行，见上方日志"
+            fi
         fi
     fi
 else
@@ -213,13 +213,13 @@ fi
 
 # ---------- 启动摘要 ----------
 log "-------------------------------------------"
-log "SSH:  ssh root@<宿主> -p ${SSH_PORT_HINT:-2222}   工作目录: ${PI_WORKDIR}"
-log "Pi:   docker exec -it <容器> pi              （TUI，选模型/开会话）"
+log "SSH  : ssh root@<宿主> -p ${SSH_PORT_HINT:-${SSH_PORT:-2222}}"
+log "工作区: ${PI_WORKDIR}   Pi TUI: docker exec -it <容器> pi"
 if pgrep -f "pi-remote-feishu serve" >/dev/null 2>&1; then
-    log "飞书: 已连接中，直接在飞书里发消息"
-    log "排障: docker exec -it <容器> pi-remote-feishu doctor --cwd ${PI_WORKDIR}"
+    log "飞书  : 桥接运行中，直接在飞书里发消息"
+    log "排障  : docker exec -it <容器> feishu-check"
 else
-    log "飞书: 未运行"
+    log "飞书  : 未运行（docker exec -it <容器> feishu-check 看原因）"
 fi
 log "-------------------------------------------"
 
