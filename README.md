@@ -224,7 +224,8 @@ docker run --rm --entrypoint cat debian-pi-agent:latest /etc/pi-image-manifest.j
 ```
 
 `depsHash` 是整棵依赖树的哈希（归一化成 `包名@版本` 列表后取 sha256，与路径无关）：
-两台机器构建哈希一样，就说明装的东西完全一致；完整依赖清单在镜像内 `/etc/pi-deps-tree.txt`。用精确版本构建时，`./build.sh` 还会额外打个
+**同架构**下两台机器构建哈希一样，就说明装的东西完全一致（arm64 与 amd64 会不同，因为原生可选依赖不一样）。
+完整依赖清单在镜像内 `/etc/pi-deps-tree.txt`，可直接 diff。用精确版本构建时，`./build.sh` 还会额外打个
 `debian-pi-agent:1.3.0-0.1.6` 的别名 tag，回滚就 `docker compose` 里改 `IMAGE_TAG`。
 
 运行期还有一处会随时间变的：中转站的模型列表。要连这个也固定，写死清单即可：
