@@ -8,7 +8,7 @@ ARG NODE_VERSION=22.23.3
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 ARG PI_VERSION=latest
 ARG PI_REMOTE_FEISHU_VERSION=latest
-ARG PI_FEISHU_EXTENSION=1
+ARG PI_FEISHU_EXTENSION=0
 ARG TARGETARCH
 ARG DEV_UID=1000
 ARG DEV_GID=1000
@@ -75,8 +75,10 @@ RUN set -eux; \
     pi-remote-feishu help >/dev/null; \
     npm cache clean --force
 
-# 可选：把 pi-remote-feishu 注册为 Pi 扩展（TUI 里的 /feishu 命令与 lark-cli 技能）。
-# 装好后移动到 /opt/pi-seed，首次启动时由 entrypoint 复制进（可能为空的）挂载卷 ~/.pi。
+# 可选（默认关）：把 pi-remote-feishu 注册为 Pi 扩展（TUI 的 /feishu 命令 + lark-cli 技能）。
+# 只在 TUI 里用得上；serve 模式自带 send_file_to_chat 工具，不需要扩展。
+# 注意：该扩展把 pi-coding-agent 写在 dependencies，Pi 会警告重复运行时模块，故默认不装。
+# 打开后装好的 ~/.pi 会挪到 /opt/pi-seed，首次启动由 entrypoint 复制进（可能为空的）挂载卷 ~/.pi。
 RUN set -eux; \
     if [ "${PI_FEISHU_EXTENSION}" = "1" ]; then \
         mkdir -p /root/.pi/agent; \
@@ -112,8 +114,10 @@ RUN set -eux; \
 
 COPY feishu-config.py /usr/local/bin/feishu-config.py
 COPY relay-sync.py /usr/local/bin/relay-sync.py
+COPY feishu-check.sh /usr/local/bin/feishu-check
 COPY entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod 0755 /usr/local/bin/feishu-config.py /usr/local/bin/relay-sync.py /usr/local/bin/docker-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/feishu-config.py /usr/local/bin/relay-sync.py \
+        /usr/local/bin/feishu-check /usr/local/bin/docker-entrypoint.sh
 
 WORKDIR /workspace
 

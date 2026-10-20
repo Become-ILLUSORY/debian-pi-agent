@@ -114,7 +114,8 @@ docker exec -it -u dev pi-agent bash   # 需要非 root 时
 | `PI_RELAY_BASE_URL` / `PI_RELAY_API_KEY` | 中转站地址与密钥，填了就自动同步模型列表 |
 | `PI_RELAY_NAME` / `PI_RELAY_API` | provider id（默认 `relay`）/ `openai-completions`、`openai-responses`、`anthropic-messages` |
 | `PI_RELAY_SYNC` | `0` 关闭自动拉取，只用 `PI_RELAY_MODELS` |
-| `PI_RELAY_MODELS` / `PI_RELAY_MODEL_FILTER` | 手写清单 / 过滤（支持 `*`） |
+| `PI_RELAY_MODELS` / `PI_RELAY_MODEL_FILTER` | 手写清单 / 只保留匹配项（支持 `*`） |
+| `PI_RELAY_EXCLUDE` | 排除项，默认滤掉 embedding / tts / rerank / 画图模型；设空字符串关闭 |
 | `PI_RELAY_DEFAULT_MODEL` | 默认模型 id，写进 `settings.json` |
 | `PI_RELAY_CONTEXT_WINDOW` / `PI_RELAY_MAX_TOKENS` | 模型元数据，默认 128000 / 16384 |
 | `PI_RELAY_VISION` | `1` 表示模型支持图片输入 |
@@ -138,6 +139,7 @@ docker exec -it -u dev pi-agent bash   # 需要非 root 时
 | `FEISHU_LOG_LEVEL` / `FEISHU_DEBUG_EVENTS` | 日志级别 / 打印事件摘要 |
 | `FEISHU_MAX_UPLOAD_MB` | 回传文件大小上限，默认 20 |
 | `FEISHU_RESTART_LIMIT` | 桥接连续异常退出的重启次数，默认 5（15s→300s 退避） |
+| `FEISHU_PREFLIGHT` | `1`（默认）启动前先验凭证：明确无效就不拉桥接，避免刷屏重试 |
 
 ### SSH / 运行
 
@@ -164,14 +166,16 @@ docker build -t debian-pi-agent:latest .
 | `NODE_VERSION` | `22.23.3` |
 | `PI_VERSION` | `latest` |
 | `PI_REMOTE_FEISHU_VERSION` | `latest` |
-| `PI_FEISHU_EXTENSION` | `1` |
+| `PI_FEISHU_EXTENSION` | `0`（设为 `1` 才把飞书包注册成 Pi 扩展，供 TUI 用） |
 | `DEV_UID` / `DEV_GID` | `1000` / `1000` |
 | `NPM_REGISTRY` | `https://registry.npmmirror.com` |
 
 基础镜像没有 CA 证书，先用 `http` 装 `ca-certificates` 再切回 `https`，否则 `apt-get update` 会整段被忽略。
 
-`pi install npm:pi-remote-feishu` 装出的 `~/.pi`（约 200MB，含扩展依赖）会挪到 `/opt/pi-seed`；
-首启发现挂载卷是空的就自动复制回去，不用联网重装。
+飞书桥接默认不注册成 Pi 扩展：`serve` 模式自带 `send_file_to_chat` 工具，扩展只在 TUI 里多一个
+`/feishu` 命令和 lark-cli 技能，还会因为上游把 `pi-coding-agent` 写进 `dependencies` 触发重复模块警告。
+需要时用 `--build-arg PI_FEISHU_EXTENSION=1` 打开，装好的 `~/.pi`（约 200MB）会挪到 `/opt/pi-seed`，
+首启发现挂载卷为空就自动复制回去。
 
 ## 数据持久化
 
@@ -183,6 +187,7 @@ compose 映射到 `./data/`：`workspace/` → `/workspace`、`ssh/` → `/etc/s
 
 ```bash
 docker logs pi-agent                                    # 启动摘要 + 桥接日志
+docker exec -it pi-agent feishu-check                   # 凭证/机器人/进程/日志 一屏自检
 docker exec -it pi-agent pi-remote-feishu doctor --cwd /workspace
 docker exec -it pi-agent pi --list-models               # 看 relay 是否同步到
 docker exec -it pi-agent pi-remote-feishu send-test --chat-id oc_xxx --text hello

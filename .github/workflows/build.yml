@@ -69,6 +69,6 @@ jobs:
           build-args: |
             PI_VERSION=${{ inputs.pi_version || vars.PI_VERSION || 'latest' }}
             PI_REMOTE_FEISHU_VERSION=${{ inputs.feishu_version || vars.PI_REMOTE_FEISHU_VERSION || 'latest' }}
-            PI_FEISHU_EXTENSION=${{ vars.PI_FEISHU_EXTENSION || '1' }}
+            PI_FEISHU_EXTENSION=${{ vars.PI_FEISHU_EXTENSION || '0' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

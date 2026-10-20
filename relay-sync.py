@@ -77,6 +77,21 @@ def fetch_model_ids(base_url: str, api_key: str, api: str, timeout: int = 20) ->
     return ids
 
 
+DEFAULT_EXCLUDE = "embed,embedding,whisper,tts,rerank,moderation,dall-e,gpt-image,stable-diffusion,sdxl,flux,veo,sora,kling,seedream,seedance"
+
+
+def exclude_ids(ids: list[str], pattern: str) -> list[str]:
+    matchers = [p.strip().lower() for p in re.split(r"[,\s]+", pattern) if p.strip()]
+    if not matchers:
+        return ids
+
+    def hit(model_id: str) -> bool:
+        low = model_id.lower()
+        return any(m in low for m in matchers)
+
+    return [i for i in ids if not hit(i)]
+
+
 def apply_filter(ids: list[str], pattern: str | None) -> list[str]:
     if not pattern:
         return ids
@@ -130,7 +145,9 @@ def main() -> int:
         print("[relay] 没有可用的模型清单，models.json 保持不变", file=sys.stderr)
         return 1
 
-    ids = sorted(dict.fromkeys(apply_filter(ids, model_filter)))
+    raw_exclude = os.environ.get("PI_RELAY_EXCLUDE")
+    exclude = DEFAULT_EXCLUDE if raw_exclude is None else raw_exclude
+    ids = sorted(dict.fromkeys(exclude_ids(apply_filter(ids, model_filter), exclude)))
     if not ids:
         print(f"[relay] PI_RELAY_MODEL_FILTER={model_filter!r} 过滤后没有模型", file=sys.stderr)
         return 1

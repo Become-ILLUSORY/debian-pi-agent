@@ -29,6 +29,7 @@ services:
       PI_RELAY_API: ${PI_RELAY_API:-openai-completions}
       PI_RELAY_MODELS: ${PI_RELAY_MODELS:-}
       PI_RELAY_MODEL_FILTER: ${PI_RELAY_MODEL_FILTER:-}
+      PI_RELAY_EXCLUDE: ${PI_RELAY_EXCLUDE-embed,embedding,whisper,tts,rerank,moderation,dall-e,gpt-image,stable-diffusion,sdxl,flux,veo,sora,kling,seedream,seedance}
       PI_RELAY_DEFAULT_MODEL: ${PI_RELAY_DEFAULT_MODEL:-}
       PI_RELAY_CONTEXT_WINDOW: ${PI_RELAY_CONTEXT_WINDOW:-128000}
       PI_RELAY_MAX_TOKENS: ${PI_RELAY_MAX_TOKENS:-16384}
