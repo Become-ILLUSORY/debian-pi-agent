@@ -9,14 +9,14 @@ log() { printf '[entrypoint] %s\n' "$*"; }
 : "${SSH_PERMIT_ROOT_LOGIN:=yes}"
 : "${SSH_PASSWORD_AUTH:=yes}"
 : "${PI_WORKDIR:=/workspace}"
-: "${FEISHU_ENABLED:=auto}"
+: "${FEISHU_ENABLED:=1}"
 : "${FEISHU_CONFIG:=}"
 : "${FEISHU_GROUP_SCOPE:=shared-chat}"
 : "${FEISHU_LOG_LEVEL:=info}"
 : "${FEISHU_DEBUG_EVENTS:=0}"
 : "${FEISHU_CONFIG_FORCE:=0}"
-: "${FEISHU_RESTART_LIMIT:=5}"
-: "${FEISHU_PREFLIGHT:=1}"
+: "${FEISHU_RESTART_LIMIT:=0}"   # 0 = 不限次数（退避封顶 300s）
+: "${FEISHU_PREFLIGHT:=0}"   # 1 = 启动前额外自检，仅告警不阻止启动
 
 # ---------- SSH ----------
 mkdir -p /run/sshd /etc/ssh/keys /root/.ssh
@@ -137,7 +137,7 @@ should_start_feishu() {
 
 if should_start_feishu; then
     if [ -z "${FEISHU_APP_ID:-}" ] || [ -z "${FEISHU_APP_SECRET:-}" ]; then
-        log "FEISHU_ENABLED=1 但缺少 FEISHU_APP_ID / FEISHU_APP_SECRET，跳过飞书桥接"
+        log "未设置 FEISHU_APP_ID / FEISHU_APP_SECRET，飞书桥接无法启动"
     else
         config_path="$FEISHU_CONFIG"
         if [ -z "$config_path" ]; then
@@ -152,17 +152,15 @@ if should_start_feishu; then
             config_path=""
         fi
 
-        # 启动前自检凭证：明确无效就别反复重试刷屏，网络异常则照常启动让它重试
-        skip_feishu=""
+        # 可选自检：只打日志，永远不阻止桥接启动（这是异地控制通道，失败也要让它自己重试）
         if [ "$FEISHU_PREFLIGHT" = "1" ]; then
             check_rc=0
             check_out=$(feishu-check 2>&1) || check_rc=$?
             case "$check_rc" in
                 0) log "飞书凭证校验：$(printf '%s' "$check_out" | sed -n 's/^凭证状态 *: //p')" ;;
-                1) log "飞书凭证校验失败，跳过启动（改好 .env 后 docker compose up -d 重启容器）："
-                   printf '%s\n' "$check_out" | sed 's/^/    /'
-                   skip_feishu=1 ;;
-                *) log "飞书凭证自检未能完成（网络问题？），仍尝试启动桥接" ;;
+                1) log "警告：飞书凭证自检失败（仍然启动桥接，持续重试）："
+                   printf '%s\n' "$check_out" | sed 's/^/    /' ;;
+                *) log "飞书凭证自检未能完成（网络问题？），照常启动桥接" ;;
             esac
         fi
 
@@ -174,41 +172,42 @@ if should_start_feishu; then
         [ -n "$config_path" ] && argv+=(--config "$config_path")
         [ "$FEISHU_DEBUG_EVENTS" = "1" ] && argv+=(--debug-events)
 
-        # 桥接进程守护：异常退出后按 15s→300s 退避重启，运行满 2 分钟则重置计数
-        if [ -n "$skip_feishu" ]; then
-            log "飞书桥接未启动（凭证无效）；自检：docker exec -it <容器> feishu-check"
+        log "启动 pi-remote-feishu（workspace=${PI_WORKDIR}, group-scope=${FEISHU_GROUP_SCOPE}）"
+        # 守护：异常退出按 15s→300s 退避重启；运行满 2 分钟重置计数；
+        # FEISHU_RESTART_LIMIT=0（默认）表示不限次数
+        (
+            set +e
+            attempt=0
+            while :; do
+                started=$(date +%s)
+                pi-remote-feishu "${argv[@]}" 2>&1
+                code=$?
+                ran=$(( $(date +%s) - started ))
+                [ "$ran" -ge 120 ] && attempt=0
+                attempt=$((attempt + 1))
+                if [ "$FEISHU_RESTART_LIMIT" != "0" ] && [ "$attempt" -ge "$FEISHU_RESTART_LIMIT" ]; then
+                    log "pi-remote-feishu 连续异常退出 ${attempt} 次（最后退出码 ${code}），已停止重启；改好配置后重启容器即可"
+                    exit 0
+                fi
+                delay=$((attempt * 15))
+                [ "$delay" -gt 300 ] && delay=300
+                log "pi-remote-feishu 退出（code=${code}，运行 ${ran}s），${delay}s 后重启"
+                sleep "$delay"
+            done
+        ) 2>&1 | tee -a "$logfile" &
+        sleep 6
+        if pgrep -f "pi-remote-feishu serve" >/dev/null 2>&1; then
+            log "pi-remote-feishu 已启动（日志同时输出到 docker logs 与容器内 ${logfile}）"
         else
-            log "启动 pi-remote-feishu（workspace=${PI_WORKDIR}, group-scope=${FEISHU_GROUP_SCOPE}）"
-            (
-                set +e
-                attempt=0
-                while :; do
-                    started=$(date +%s)
-                    pi-remote-feishu "${argv[@]}" 2>&1
-                    code=$?
-                    ran=$(( $(date +%s) - started ))
-                    [ "$ran" -ge 120 ] && attempt=0
-                    attempt=$((attempt + 1))
-                    if [ "$attempt" -ge "$FEISHU_RESTART_LIMIT" ]; then
-                        log "pi-remote-feishu 连续异常退出 ${attempt} 次（最后退出码 ${code}），停止重启；请检查配置后重启容器"
-                        exit 0
-                    fi
-                    delay=$((attempt * 15))
-                    [ "$delay" -gt 300 ] && delay=300
-                    log "pi-remote-feishu 退出（code=${code}，运行 ${ran}s），${delay}s 后重启"
-                    sleep "$delay"
-                done
-            ) 2>&1 | tee -a "$logfile" &
-            sleep 6
-            if pgrep -f "pi-remote-feishu serve" >/dev/null 2>&1; then
-                log "pi-remote-feishu 已启动（日志同时输出到 docker logs 与容器内 ${logfile}）"
-            else
-                log "pi-remote-feishu 未能保持运行，见上方日志"
-            fi
+            log "pi-remote-feishu 首次启动未保持运行，守护进程会继续重试，见上方日志"
         fi
     fi
 else
-    log "飞书桥接未启用：在 .env 填 FEISHU_APP_ID / FEISHU_APP_SECRET（并用 FEISHU_ENABLED=auto 或 1）后 docker compose up -d 重建容器"
+    if [ "$FEISHU_ENABLED" = "auto" ]; then
+        log "飞书桥接未启动：FEISHU_ENABLED=auto 但缺少 FEISHU_APP_ID / FEISHU_APP_SECRET"
+    else
+        log "飞书桥接已关闭（FEISHU_ENABLED=${FEISHU_ENABLED}）；这是异地控制通道，非必要不建议关"
+    fi
 fi
 
 # ---------- 启动摘要 ----------

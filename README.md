@@ -3,7 +3,8 @@
 Debian 13 (trixie) 容器镜像，内置 **Pi Agent**、**pi-remote-feishu 飞书桥接** 与 SSH，apt 走清华镜像。
 默认以 **root** 运行，同时保留一个可选的 `dev` 用户。
 
-> 飞书走 WebSocket 长连接，除 SSH 外不需要任何对外端口。
+> 飞书是主要的远程控制通道（异地开会话、审批工具调用），走 WebSocket 长连接，除 SSH 外不需要任何对外端口。
+> 桥接进程有守护：异常退出按 15s→300s 退避重启，默认不限次数。
 > 早期 Claude Code + cc-connect 版本见 [`debian-claude-code`](https://github.com/Become-ILLUSORY/debian-claude-code)，已停止更新。
 
 ## 内容
@@ -35,7 +36,7 @@ Debian 13 (trixie) 容器镜像，内置 **Pi Agent**、**pi-remote-feishu 飞�
 ```bash
 cp .env.example .env
 # 1) 填中转站：PI_RELAY_BASE_URL / PI_RELAY_API_KEY（自动拉模型列表）
-# 2) 填飞书：FEISHU_APP_ID / FEISHU_APP_SECRET
+# 2) 填飞书：FEISHU_APP_ID / FEISHU_APP_SECRET（异地控制通道，默认开）
 # 3) 改 SSH 密码：SSH_PASSWORD
 docker compose up -d
 docker logs -f pi-agent          # SSH / 模型 / 飞书桥接状态都在这里
@@ -144,7 +145,7 @@ docker exec -it -u dev pi-agent bash   # 需要非 root 时
 
 | 变量 | 说明 |
 | --- | --- |
-| `FEISHU_ENABLED` | `auto`（默认，有 appId/appSecret 才启动）\| `1` 强制 \| `0` 关闭 |
+| `FEISHU_ENABLED` | `1`（默认启用）\| `auto`（有凭证才启动）\| `0` 关闭 |
 | `FEISHU_APP_ID` / `FEISHU_APP_SECRET` | 飞书应用凭证 |
 | `FEISHU_BOT_NAME` | 机器人显示名，默认 `Pi Agent` |
 | `FEISHU_CONFIG` | 自定义配置路径；留空则生成 `~/.pi/agent/feishu.json` |
@@ -159,8 +160,8 @@ docker exec -it -u dev pi-agent bash   # 需要非 root 时
 | `FEISHU_ALLOWED_OUTPUT_DIRS` | `send_file_to_chat` 允许的目录（逗号分隔），默认只有工作目录 |
 | `FEISHU_IDLE_TTL_MIN` | 会话空闲回收时间（分钟），默认 30 |
 | `FEISHU_SHOW_TOOL_EVENTS` / `FEISHU_SHOW_THINKING` | 是否显示工具事件 / 思考内容（`quote`/`plain`/`hide`） |
-| `FEISHU_RESTART_LIMIT` | 桥接连续异常退出的重启次数，默认 5（15s→300s 退避） |
-| `FEISHU_PREFLIGHT` | `1`（默认）启动前先验凭证：明确无效就不拉桥接，避免刷屏重试 |
+| `FEISHU_RESTART_LIMIT` | 连续异常退出的重启上限，`0`（默认）不限次数，退避 15s→300s 封顶 |
+| `FEISHU_PREFLIGHT` | `1` 时启动前额外自检凭证，只打日志、不阻止启动（默认为 `0`） |
 
 ### SSH / 运行
 
@@ -217,6 +218,6 @@ docker exec -it pi-agent pi-remote-feishu send-test --chat-id oc_xxx --text hell
 
 - `Missing Feishu appId`：凭证没传进容器，或 `FEISHU_ENABLED=0`。
 - `could not resolve bot identity ... 400`：凭证错 / 应用未发布 / 机器人能力没开。
-- 收不到消息：事件订阅没选「长连接」或没订阅 `im.message.receive_v1`。
+- 收不到消息：事件订阅没选「长连接」或没订阅 `im.message.receive_v1`；先看 `docker logs pi-agent` 里桥接是否在重启。
 - 卡片按钮无反应：没订阅 `card.action.trigger`，或改权限后没重新发布版本。
 - 模型报未配置：看 `docker exec pi-agent pi --list-models`，空的话检查 `PI_RELAY_*` 或 API key。
