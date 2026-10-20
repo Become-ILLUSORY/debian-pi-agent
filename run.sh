@@ -10,6 +10,10 @@ IMAGE_NAME="${IMAGE_NAME:-debian-pi-agent}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 CONTAINER_NAME="${CONTAINER_NAME:-pi-agent}"
 DATA_DIR="${DATA_DIR:-./data}"
+case "$DATA_DIR" in
+    /*) DATA_ABS="$DATA_DIR" ;;
+    *)  DATA_ABS="$(pwd)/${DATA_DIR#./}" ;;
+esac
 
 mkdir -p "$DATA_DIR"/workspace "$DATA_DIR"/ssh "$DATA_DIR"/pi "$DATA_DIR"/gh
 
@@ -25,10 +29,10 @@ docker run -d \
     -t \
     -p "${SSH_PORT:-2222}:22" \
     ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} \
-    -v "$(pwd)/${DATA_DIR#./}/workspace:/workspace" \
-    -v "$(pwd)/${DATA_DIR#./}/ssh:/etc/ssh/keys" \
-    -v "$(pwd)/${DATA_DIR#./}/pi:/root/.pi" \
-    -v "$(pwd)/${DATA_DIR#./}/gh:/root/.config/gh" \
+    -v "${DATA_ABS}/workspace:/workspace" \
+    -v "${DATA_ABS}/ssh:/etc/ssh/keys" \
+    -v "${DATA_ABS}/pi:/root/.pi" \
+    -v "${DATA_ABS}/gh:/root/.config/gh" \
     "${IMAGE_NAME}:${IMAGE_TAG}"
 
 echo "容器已启动：$CONTAINER_NAME"

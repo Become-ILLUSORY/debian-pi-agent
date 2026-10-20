@@ -42,6 +42,18 @@ docker compose up -d
 docker logs -f pi-agent          # SSH / 模型 / 飞书桥接状态都在这里
 ```
 
+正常启动大致长这样：
+
+```
+[entrypoint] root 密码已设置
+[entrypoint] sshd 已启动 (22)
+[relay] 从 https://api.your-relay.com/v1/models 拉到 86 个模型
+[relay] 已写入 /root/.pi/agent/models.json（provider=relay, 72 个模型, api=openai-completions）
+[relay] 默认模型：relay/gpt-5.1
+[entrypoint] 飞书凭证校验：有效（机器人：Pi Agent / ou_xxx）
+[entrypoint] pi-remote-feishu 已启动（日志同时输出到 docker logs 与容器内 /var/log/pi-remote-feishu/feishu.log）
+```
+
 没有 compose 插件时用 `./run.sh`（等价，`docker run` + `--env-file .env`）。
 
 预构建镜像（GitHub Actions 出 `linux/amd64` + `linux/arm64`）：

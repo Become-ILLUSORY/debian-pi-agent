@@ -65,7 +65,7 @@ log "sshd 已启动 (22)"
 # ---------- Pi 配置目录 ----------
 # 挂载的 $HOME/.pi 为空（新卷）时，用镜像里烘焙的种子填充：
 # 其中包含 pi-remote-feishu 扩展与 npm 缓存的包，避免首启再联网安装。
-if [ ! -f /root/.pi/agent/settings.json ] && [ -d /opt/pi-seed ]; then
+if [ ! -f /root/.pi/agent/settings.json ] && [ -f /opt/pi-seed/agent/settings.json ]; then
     log "初始化 /root/.pi（从镜像种子复制）"
     mkdir -p /root/.pi
     cp -a /opt/pi-seed/. /root/.pi/
