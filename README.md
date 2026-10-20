@@ -190,6 +190,7 @@ docker build -t debian-pi-agent:latest .
 | `NODE_VERSION` | `22.23.3` |
 | `PI_VERSION` | `latest` |
 | `PI_REMOTE_FEISHU_VERSION` | `latest` |
+| `PI_STRICT_LOCK` | `0` 按 `.env` 版本装 / `1` 用仓库里的 `package-lock.json` 严格锁定 |
 | `PI_FEISHU_EXTENSION` | `0`（设为 `1` 才把飞书包注册成 Pi 扩展，供 TUI 用） |
 | `DEV_UID` / `DEV_GID` | `1000` / `1000` |
 | `NPM_REGISTRY` | `https://registry.npmmirror.com` |
@@ -199,6 +200,39 @@ docker build -t debian-pi-agent:latest .
 默认不注册 Pi 扩展：`serve` 模式自己就带 `send_file_to_chat` 工具，扩展只是给 TUI 多一个 `/feishu` 命令。
 需要时用 `--build-arg PI_FEISHU_EXTENSION=1` 打开；打开后装好的 `~/.pi`（约 200MB）会挪到 `/opt/pi-seed`，
 首启发现挂载卷为空就自动复制回去。
+
+## 可复现性与升级
+
+`.env` 是唯一输入：构建参数、运行时配置全在里面，同一份 `.env` 换台机器重建就是同一套环境。
+
+两个旋钮，按需要切换：
+
+| 模式 | `.env` 怎么设 | 升级方式 | 适合 |
+| --- | --- | --- | --- |
+| 跟随最新（默认） | `PI_VERSION=latest` | 改都不用改，`./build.sh` 就是最新 | 想用新功能 |
+| 版本钉死 | `PI_VERSION=1.3.0`、`PI_REMOTE_FEISHU_VERSION=0.1.6` | 改成新版本号再 build | 要能回滚 |
+| 严格锁定 | 上面钉死 + `PI_STRICT_LOCK=1` | `./update-deps.sh 1.4.0 0.1.7` | 依赖树逐层固定，团队/CI 一致 |
+
+基础镜像默认钉在 `debian:trixie-slim@sha256:a29215f6…`；想跟随 apt 侧更新，把 `.env` 里 `@sha256:` 后面那段删掉即可。
+
+**这套镜像到底装了什么**，随时可查（启动日志第一屏也会打印）：
+
+```bash
+docker run --rm --entrypoint cat debian-pi-agent:latest /etc/pi-image-manifest.json
+# {"base":"trixie-slim@sha256:a29215…","node":"22.23.3","piRequested":"latest",
+#  "pi":"1.3.0","feishuBridge":"0.1.6","strictLock":0,"depsHash":"0bdc479729bdde97"}
+```
+
+`depsHash` 是整棵依赖树的哈希：两次构建哈希一样，说明装配完全一致；
+完整依赖树在镜像内 `/etc/pi-deps-tree.txt`。用精确版本构建时，`./build.sh` 还会额外打个
+`debian-pi-agent:1.3.0-0.1.6` 的别名 tag，回滚就 `docker compose` 里改 `IMAGE_TAG`。
+
+运行期还有一处会随时间变的：中转站的模型列表。要连这个也固定，写死清单即可：
+
+```ini
+PI_RELAY_SYNC=0
+PI_RELAY_MODELS=gpt-5.1,claude-sonnet-4-5
+```
 
 ## 数据持久化
 

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG DEBIAN_VERSION=trixie-slim
+ARG DEBIAN_VERSION=trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
 FROM debian:${DEBIAN_VERSION}
 
 ARG DEBIAN_MIRROR=https://mirrors.tuna.tsinghua.edu.cn
@@ -8,6 +8,7 @@ ARG NODE_VERSION=22.23.3
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 ARG PI_VERSION=latest
 ARG PI_REMOTE_FEISHU_VERSION=latest
+ARG PI_STRICT_LOCK=0
 ARG PI_FEISHU_EXTENSION=0
 ARG TARGETARCH
 ARG DEV_UID=1000
@@ -66,14 +67,38 @@ RUN set -eux; \
     rm -f "/tmp/$tarball" /tmp/SHASUMS256.txt; \
     node -v; npm -v
 
-# Pi Agent + 飞书桥接 CLI（npm 全局）
+# Pi Agent + 飞书桥接 CLI
+# - 默认（PI_STRICT_LOCK=0）：按 .env 里的版本装，写 latest 就跟着升
+# - 严格复现（PI_STRICT_LOCK=1）：用仓库里的 npm/package-lock.json 做 npm ci，依赖树逐层锁定
+# 两种方式装进同一个目录，装完都把「实际装配清单」写进 /etc/pi-image-manifest.json
+COPY npm/package.json npm/package-lock.json /opt/pi-deps/
 RUN set -eux; \
-    npm install -g --no-audit --no-fund \
-        "@earendil-works/pi-coding-agent@${PI_VERSION}" \
-        "pi-remote-feishu@${PI_REMOTE_FEISHU_VERSION}"; \
+    cd /opt/pi-deps; \
+    if [ "${PI_STRICT_LOCK}" = "1" ]; then \
+        npm ci --omit=dev --no-audit --no-fund; \
+    else \
+        npm install --omit=dev --no-audit --no-fund --no-save \
+            "@earendil-works/pi-coding-agent@${PI_VERSION}" \
+            "pi-remote-feishu@${PI_REMOTE_FEISHU_VERSION}"; \
+    fi; \
+    ln -sf /opt/pi-deps/node_modules/.bin/pi /usr/local/bin/pi; \
+    ln -sf /opt/pi-deps/node_modules/.bin/pi-remote-feishu /usr/local/bin/pi-remote-feishu; \
     pi --version; \
     pi-remote-feishu help >/dev/null; \
     npm cache clean --force
+
+# 构建输入 + 实际装配清单：镜像里随时核对这套环境是怎么来的
+RUN set -eux; \
+    cd /opt/pi-deps; \
+    pi_ver="$(node -p "require('/opt/pi-deps/node_modules/@earendil-works/pi-coding-agent/package.json').version")"; \
+    feishu_ver="$(node -p "require('/opt/pi-deps/node_modules/pi-remote-feishu/package.json').version")"; \
+    deps_hash="$(npm ls --all --json 2>/dev/null | sha256sum | cut -c1-16)"; \
+    npm ls --all 2>/dev/null > /etc/pi-deps-tree.txt || true; \
+    printf '{\n  "base": "%s",\n  "node": "%s",\n  "piRequested": "%s",\n  "feishuRequested": "%s",\n  "pi": "%s",\n  "feishuBridge": "%s",\n  "strictLock": %s,\n  "depsHash": "%s",\n  "feishuExtension": %s\n}\n' \
+        "${DEBIAN_VERSION}" "${NODE_VERSION}" "${PI_VERSION}" "${PI_REMOTE_FEISHU_VERSION}" \
+        "$pi_ver" "$feishu_ver" "${PI_STRICT_LOCK}" "$deps_hash" "${PI_FEISHU_EXTENSION}" \
+        > /etc/pi-image-manifest.json; \
+    cat /etc/pi-image-manifest.json
 
 # 可选（默认关）：把飞书桥接注册为 Pi 扩展（TUI 里的 /feishu 命令）。
 # serve 模式自带 send_file_to_chat，不装扩展也能用；打开后装好的 ~/.pi 移到 /opt/pi-seed，

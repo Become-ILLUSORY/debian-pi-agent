@@ -71,6 +71,11 @@ if [ ! -f /root/.pi/agent/settings.json ] && [ -f /opt/pi-seed/agent/settings.js
     cp -a /opt/pi-seed/. /root/.pi/
 fi
 
+# ---------- 本次镜像的装配清单 ----------
+if [ -f /etc/pi-image-manifest.json ]; then
+    log "镜像组件：$(python3 -c 'import json;d=json.load(open("/etc/pi-image-manifest.json"));print("pi %s · feishu %s · node %s · strict-lock=%s · deps %s" % (d["pi"], d["feishuBridge"], d["node"], d["strictLock"], d["depsHash"]))' 2>/dev/null || echo "见 /etc/pi-image-manifest.json")"
+fi
+
 case "$PI_WORKDIR" in
     /|/root|/home|/etc|/usr|/var|/bin|/sbin|/lib|/boot|/dev|/proc|/sys)
         log "警告：PI_WORKDIR=${PI_WORKDIR} 是系统/凭据目录，agent 会读写敏感文件；建议保持默认 /workspace"

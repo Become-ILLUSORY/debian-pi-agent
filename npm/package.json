@@ -1,0 +1,10 @@
+{
+  "name": "pi-image-deps",
+  "version": "1.0.0",
+  "private": true,
+  "description": "镜像内 Pi Agent 与飞书桥接的固定版本依赖（由 package-lock.json 锁定）",
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "1.3.0",
+    "pi-remote-feishu": "0.1.6"
+  }
+}
