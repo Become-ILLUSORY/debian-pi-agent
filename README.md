@@ -256,3 +256,7 @@ docker exec -it pi-agent pi-remote-feishu send-test --chat-id oc_xxx --text hell
 - 收不到消息：事件订阅没选「长连接」或没订阅 `im.message.receive_v1`；先看 `docker logs pi-agent` 里桥接是否在重启。
 - 卡片按钮无反应：没订阅 `card.action.trigger`，或改权限后没重新发布版本。
 - 模型报未配置：看 `docker exec pi-agent pi --list-models`，空的话检查 `PI_RELAY_*` 或 API key。
+
+## 给 AI / 自动化看的说明
+
+仓库根目录的 [AGENTS.md](AGENTS.md) 是机器可读版：结构、不变量、环境变量消费方、踩过的坑、无 docker 时的验证方法。
