@@ -3,6 +3,8 @@
 ARG DEBIAN_VERSION=trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
 FROM debian:${DEBIAN_VERSION}
 
+# 全局 ARG 必须在 FROM 之后重新声明，才能在构建阶段里使用
+ARG DEBIAN_VERSION
 ARG DEBIAN_MIRROR=https://mirrors.tuna.tsinghua.edu.cn
 ARG NODE_VERSION=22.23.3
 ARG NPM_REGISTRY=https://registry.npmmirror.com
