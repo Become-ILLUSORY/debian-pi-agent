@@ -220,11 +220,11 @@ docker build -t debian-pi-agent:latest .
 ```bash
 docker run --rm --entrypoint cat debian-pi-agent:latest /etc/pi-image-manifest.json
 # {"base":"trixie-slim@sha256:a29215…","node":"22.23.3","piRequested":"latest",
-#  "pi":"1.3.0","feishuBridge":"0.1.6","strictLock":0,"depsHash":"0bdc479729bdde97"}
+#  "pi":"1.3.0","feishuBridge":"0.1.6","strictLock":0,"depsHash":"7e473d9773c3c21e"}
 ```
 
-`depsHash` 是整棵依赖树的哈希：两次构建哈希一样，说明装配完全一致；
-完整依赖树在镜像内 `/etc/pi-deps-tree.txt`。用精确版本构建时，`./build.sh` 还会额外打个
+`depsHash` 是整棵依赖树的哈希（归一化成 `包名@版本` 列表后取 sha256，与路径无关）：
+两台机器构建哈希一样，就说明装的东西完全一致；完整依赖清单在镜像内 `/etc/pi-deps-tree.txt`。用精确版本构建时，`./build.sh` 还会额外打个
 `debian-pi-agent:1.3.0-0.1.6` 的别名 tag，回滚就 `docker compose` 里改 `IMAGE_TAG`。
 
 运行期还有一处会随时间变的：中转站的模型列表。要连这个也固定，写死清单即可：

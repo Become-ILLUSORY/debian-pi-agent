@@ -90,12 +90,13 @@ RUN set -eux; \
     npm cache clean --force
 
 # 构建输入 + 实际装配清单：镜像里随时核对这套环境是怎么来的
+# 依赖树归一化成 name@version 列表（路径无关），Dockerfile 里不能写行内注释，故说明放这里
 RUN set -eux; \
     cd /opt/pi-deps; \
     pi_ver="$(node -p "require('/opt/pi-deps/node_modules/@earendil-works/pi-coding-agent/package.json').version")"; \
     feishu_ver="$(node -p "require('/opt/pi-deps/node_modules/pi-remote-feishu/package.json').version")"; \
-    deps_hash="$(npm ls --all --json 2>/dev/null | sha256sum | cut -c1-16)"; \
-    npm ls --all 2>/dev/null > /etc/pi-deps-tree.txt || true; \
+    npm ls --all --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const t=JSON.parse(s);const out=[];(function walk(n){for(const[k,v] of Object.entries(n.dependencies||{})){if(v&&v.version)out.push(k+"@"+v.version);walk(v)}})(t);console.log(out.sort().join("\n"))})' > /etc/pi-deps-tree.txt || true; \
+    deps_hash="$(sha256sum /etc/pi-deps-tree.txt | cut -c1-16)"; \
     printf '{\n  "base": "%s",\n  "node": "%s",\n  "piRequested": "%s",\n  "feishuRequested": "%s",\n  "pi": "%s",\n  "feishuBridge": "%s",\n  "strictLock": %s,\n  "depsHash": "%s",\n  "feishuExtension": %s\n}\n' \
         "${DEBIAN_VERSION}" "${NODE_VERSION}" "${PI_VERSION}" "${PI_REMOTE_FEISHU_VERSION}" \
         "$pi_ver" "$feishu_ver" "${PI_STRICT_LOCK}" "$deps_hash" "${PI_FEISHU_EXTENSION}" \
