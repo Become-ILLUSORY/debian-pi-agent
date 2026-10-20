@@ -63,6 +63,65 @@ docker logs -f pi-agent          # SSH / 模型 / 飞书桥接状态都在这里
 docker pull ghcr.io/become-illusory/debian-pi-agent:latest
 ```
 
+## 示例 docker-compose.yml
+
+不想用仓库自带的构建版，直接拉预构建镜像的话，复制下面这份就够：
+
+```yaml
+services:
+  pi:
+    image: ghcr.io/become-illusory/debian-pi-agent:latest
+    container_name: pi-agent
+    hostname: pi-agent
+    restart: unless-stopped
+    tty: true
+    stdin_open: true
+    ports:
+      - "2222:22"                    # 宿主 2222 → 容器 22（SSH）
+    env_file:
+      - .env                         # 所有配置都放这里，样例见 .env.example
+    environment:
+      TZ: Asia/Shanghai              # 其余变量不必重复写，.env 里都覆盖了
+    volumes:
+      - ./data/workspace:/workspace        # agent 工作目录
+      - ./data/pi:/root/.pi                # 登录态/模型/会话（务必持久化）
+      - ./data/ssh:/etc/ssh/keys           # SSH 主机密钥
+      - ./data/gh:/root/.config/gh         # gh 登录态
+    working_dir: /workspace
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/22"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+```
+
+```bash
+mkdir -p data/{workspace,pi,ssh,gh}
+cp .env.example .env && $EDITOR .env     # 至少填 PI_RELAY_BASE_URL/API_KEY、FEISHU_APP_ID/SECRET、SSH_PASSWORD
+docker compose up -d
+docker logs -f pi-agent                  # 看到「飞书桥接已启动」就成了
+```
+
+几点说明：
+
+- **不需要写 `command`**，镜像入口已经带好 SSH、模型同步、飞书守护和启动摘要。
+- **`.env` 就是全部配置**：要改模型、换飞书包版本、调桥接策略都改它，改完 `docker compose up -d` 重建容器即可生效。
+- 想自己构建（改镜像、试新版本）：把上面的 `image:` 换成 `build:` 段，然后 `docker compose up -d --build`：
+
+```yaml
+    build:
+      context: .
+      args:
+        PI_VERSION: ${PI_VERSION:-latest}
+        PI_REMOTE_FEISHU_VERSION: ${PI_REMOTE_FEISHU_VERSION:-latest}
+        PI_STRICT_LOCK: ${PI_STRICT_LOCK:-0}
+```
+
+  仓库根目录那份 `docker-compose.yml` 就是这种写法，可直接用。
+- 端口只映射 SSH 一个；飞书走 WebSocket 长连接，不需要任何入站端口。
+- 数据全在 `./data/`，删容器不影响登录态和会话；`data/pi` 里是 `auth.json`/`models.json`，注意权限别外泄。
+
 ## 模型：中转站（推荐）
 
 只要填了 `PI_RELAY_BASE_URL`，容器启动时会请求 `{BASE_URL}/models` 把整份模型列表写进
