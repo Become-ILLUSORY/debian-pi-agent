@@ -75,10 +75,9 @@ RUN set -eux; \
     pi-remote-feishu help >/dev/null; \
     npm cache clean --force
 
-# 可选（默认关）：把 pi-remote-feishu 注册为 Pi 扩展（TUI 的 /feishu 命令 + lark-cli 技能）。
-# 只在 TUI 里用得上；serve 模式自带 send_file_to_chat 工具，不需要扩展。
-# 注意：该扩展把 pi-coding-agent 写在 dependencies，Pi 会警告重复运行时模块，故默认不装。
-# 打开后装好的 ~/.pi 会挪到 /opt/pi-seed，首次启动由 entrypoint 复制进（可能为空的）挂载卷 ~/.pi。
+# 可选（默认关）：把飞书桥接注册为 Pi 扩展（TUI 里的 /feishu 命令）。
+# serve 模式自带 send_file_to_chat，不装扩展也能用；打开后装好的 ~/.pi 移到 /opt/pi-seed，
+# 首次启动由 entrypoint 复制进（可能为空的）挂载卷 ~/.pi。
 RUN set -eux; \
     if [ "${PI_FEISHU_EXTENSION}" = "1" ]; then \
         mkdir -p /root/.pi/agent; \

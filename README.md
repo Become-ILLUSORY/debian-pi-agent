@@ -3,9 +3,8 @@
 Debian 13 (trixie) 容器镜像，内置 **Pi Agent**、**pi-remote-feishu 飞书桥接** 与 SSH，apt 走清华镜像。
 默认以 **root** 运行，同时保留一个可选的 `dev` 用户。
 
-> 从 [`debian-claude-code`](https://github.com/Become-ILLUSORY/debian-claude-code) 迁出：
-> Claude Code → `@earendil-works/pi-coding-agent`，cc-connect → `pi-remote-feishu`。
 > 飞书走 WebSocket 长连接，除 SSH 外不需要任何对外端口。
+> 早期 Claude Code + cc-connect 版本见 [`debian-claude-code`](https://github.com/Become-ILLUSORY/debian-claude-code)，已停止更新。
 
 ## 内容
 
@@ -13,8 +12,8 @@ Debian 13 (trixie) 容器镜像，内置 **Pi Agent**、**pi-remote-feishu 飞�
 | --- | --- |
 | 基础镜像 | `debian:trixie-slim`，apt 用 `mirrors.tuna.tsinghua.edu.cn` |
 | Node.js | v22.23.3（Debian 13 自带 20，不满足 Pi 的 `>=22.19`），从清华 `nodejs-release` 下载并校验 sha256 |
-| Pi Agent | `@earendil-works/pi-coding-agent`（全局 `pi` 命令） |
-| 飞书桥接 | `pi-remote-feishu`（全局 `pi-remote-feishu` 命令），并注册为 Pi 扩展 |
+| Pi Agent | 全局 `pi` 命令（TUI、包管理、模型选择） |
+| 飞书桥接 | `pi-remote-feishu`（全局 `pi-remote-feishu` 命令）；可选注册为 Pi 扩展（默认关，见下） |
 | SSH | openssh-server，密码/公钥运行时注入 |
 | 其他 | git、git-lfs、gh、python3、curl、wget、jq、tree、unzip、ripgrep、fd、bat、vim、nano、tmux、zsh、htop、mosh、build-essential |
 
@@ -52,6 +51,7 @@ docker logs -f pi-agent          # SSH / 模型 / 飞书桥接状态都在这里
 [relay] 默认模型：relay/gpt-5.1
 [entrypoint] 飞书凭证校验：有效（机器人：Pi Agent / ou_xxx）
 [entrypoint] pi-remote-feishu 已启动（日志同时输出到 docker logs 与容器内 /var/log/pi-remote-feishu/feishu.log）
+[entrypoint] ----- 启动摘要 -----
 ```
 
 没有 compose 插件时用 `./run.sh`（等价，`docker run` + `--env-file .env`）。
@@ -94,6 +94,12 @@ PI_RELAY_MODEL_FILTER=gpt-*,claude-*  # 可选，只保留匹配项
 
 之后私聊机器人，或在群里 @机器人 说话。配置由环境变量生成到 `~/.pi/agent/feishu.json`
 （已存在则只合并、保留手工修改；`FEISHU_CONFIG_FORCE=1` 强制重写）。
+
+查找顺序是 `<工作目录>/.pi/feishu.json` → `~/.pi/agent/feishu.json`：想用完全手写的配置，
+挂一个文件到 `/workspace/.pi/feishu.json` 即可，它优先级最高。
+
+查找顺序是 `<工作目录>/.pi/feishu.json` → `~/.pi/agent/feishu.json`：想用完全手写的配置，
+挂一个文件到 `/workspace/.pi/feishu.json` 即可，它优先级最高。
 
 ## 飞书命令
 
@@ -150,6 +156,9 @@ docker exec -it -u dev pi-agent bash   # 需要非 root 时
 | `FEISHU_RENDERING_MODE` | `stream-card`（默认）\| `markdown` \| `text` |
 | `FEISHU_LOG_LEVEL` / `FEISHU_DEBUG_EVENTS` | 日志级别 / 打印事件摘要 |
 | `FEISHU_MAX_UPLOAD_MB` | 回传文件大小上限，默认 20 |
+| `FEISHU_ALLOWED_OUTPUT_DIRS` | `send_file_to_chat` 允许的目录（逗号分隔），默认只有工作目录 |
+| `FEISHU_IDLE_TTL_MIN` | 会话空闲回收时间（分钟），默认 30 |
+| `FEISHU_SHOW_TOOL_EVENTS` / `FEISHU_SHOW_THINKING` | 是否显示工具事件 / 思考内容（`quote`/`plain`/`hide`） |
 | `FEISHU_RESTART_LIMIT` | 桥接连续异常退出的重启次数，默认 5（15s→300s 退避） |
 | `FEISHU_PREFLIGHT` | `1`（默认）启动前先验凭证：明确无效就不拉桥接，避免刷屏重试 |
 
@@ -161,6 +170,7 @@ docker exec -it -u dev pi-agent bash   # 需要非 root 时
 | `DEV_PASSWORD` | 可选，`dev` 用户密码（容器默认仍用 root） |
 | `SSH_AUTHORIZED_KEYS` | 公钥内容，写入 root 与 dev 的 `authorized_keys` |
 | `SSH_PERMIT_ROOT_LOGIN` / `SSH_PASSWORD_AUTH` | 覆盖 sshd 配置，默认 `yes` |
+| `SSH_PORT` | compose/run.sh 里宿主映射端口，默认 `2222` |
 | `PI_WORKDIR` | agent 工作目录，默认 `/workspace` |
 | `DATA_DIR` | 宿主数据目录，默认 `./data` |
 
@@ -175,6 +185,7 @@ docker build -t debian-pi-agent:latest .
 | 构建参数 | 默认值 |
 | --- | --- |
 | `DEBIAN_VERSION` | `trixie-slim` |
+| `DEBIAN_MIRROR` | `https://mirrors.tuna.tsinghua.edu.cn` |
 | `NODE_VERSION` | `22.23.3` |
 | `PI_VERSION` | `latest` |
 | `PI_REMOTE_FEISHU_VERSION` | `latest` |
@@ -184,9 +195,8 @@ docker build -t debian-pi-agent:latest .
 
 基础镜像没有 CA 证书，先用 `http` 装 `ca-certificates` 再切回 `https`，否则 `apt-get update` 会整段被忽略。
 
-飞书桥接默认不注册成 Pi 扩展：`serve` 模式自带 `send_file_to_chat` 工具，扩展只在 TUI 里多一个
-`/feishu` 命令和 lark-cli 技能，还会因为上游把 `pi-coding-agent` 写进 `dependencies` 触发重复模块警告。
-需要时用 `--build-arg PI_FEISHU_EXTENSION=1` 打开，装好的 `~/.pi`（约 200MB）会挪到 `/opt/pi-seed`，
+默认不注册 Pi 扩展：`serve` 模式自己就带 `send_file_to_chat` 工具，扩展只是给 TUI 多一个 `/feishu` 命令。
+需要时用 `--build-arg PI_FEISHU_EXTENSION=1` 打开；打开后装好的 `~/.pi`（约 200MB）会挪到 `/opt/pi-seed`，
 首启发现挂载卷为空就自动复制回去。
 
 ## 数据持久化
@@ -210,12 +220,3 @@ docker exec -it pi-agent pi-remote-feishu send-test --chat-id oc_xxx --text hell
 - 收不到消息：事件订阅没选「长连接」或没订阅 `im.message.receive_v1`。
 - 卡片按钮无反应：没订阅 `card.action.trigger`，或改权限后没重新发布版本。
 - 模型报未配置：看 `docker exec pi-agent pi --list-models`，空的话检查 `PI_RELAY_*` 或 API key。
-
-## 与上游的关系
-
-桥接本体是第三方包 [pi-remote-feishu](https://pi.dev/packages/pi-remote-feishu)（MIT），
-它用自己的 Pi SDK（当前 0.83.0）在进程内驱动会话；镜像里的 `pi` 命令独立安装（默认 `latest`）。
-两者会话格式版本一致（`SESSION_VERSION=3`）；若上游改版出现会话不兼容，
-用 `--build-arg PI_VERSION=0.83.0` 把全局 `pi` 固定到同版本。
-
-Pi 文档：<https://pi.dev/docs> · 包列表：<https://pi.dev/packages>
